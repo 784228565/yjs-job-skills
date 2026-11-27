@@ -4,8 +4,8 @@
 
 ```mermaid
 flowchart TD
-  S1["① 抓取<br/>yjs_fetch_pool.py"] -->|pool_foreign_segmented.json| S2["② 筛选<br/>analyze_pool.py"]
-  S2 -->|pool_hits.json / pool_final.json| S3["③ 增量<br/>diff_new.py"]
+  S1["① 抓取<br/>yjs_fetch_pool.py"] -->|pool_foreign_segmented.json| S2["② 分析/筛选<br/>analyze_pool.py<br/>（复核、报表）"]
+  S1 -->|pool_foreign_segmented.json| S3["③ 增量<br/>diff_new.py"]
   S3 -->|new_jobs.json| S4["④ 队列<br/>queue_build.py"]
   S4 -->|deliver_queue.json| S5["⑤ 预检<br/>jd_check.py"]
   S5 -->|jd_details.json| S6["⑥ 投递<br/>deliver_pool.py"]
@@ -13,13 +13,15 @@ flowchart TD
   S6 -->|Redirect| S8["⑧ 网申表单<br/>yjs-incomplete-resume-filler"]
 ```
 
+> `analyze_pool.py` 是旁路：它产出可读的达标清单供人工复核，`diff_new.py` 并不消费它的结果，而是直接读全量池。`queue_build.py` 自带硬条件与分档，是真正决定「投哪些」的一步。
+
 ## 文件契约
 
 | 生产者 → 消费者 | 文件 | 关键字段 | 失败处理 |
 |---|---|---|---|
-| 抓取 → 筛选 | `pool_foreign_segmented.json` | `id, jobname, coname, cosize, salary, jobarea, degree, jobTags[], url` | 单段 405 只影响该段，冷却后 `--only` 补抓 |
-| 筛选 → diff | `pool_hits.json` / `pool_final.json` | 同上 + `score` | 解析失败跳过该条并打印原因 |
-| diff → 队列 | `new_jobs.json` | `id, co, job, url` | 快照缺失时退化为全量 |
+| 抓取 → 分析 | `pool_foreign_segmented.json` | `id, jobname, coname, cosize, salary, jobarea, degree, jobTags[], url` | 单段 405 只影响该段，冷却后 `--only` 补抓 |
+| 分析 → 人工 | `pool_hits.json` / `pool_final.json` | 同上 + `score` | 解析失败跳过该条并打印原因 |
+| 抓取 → diff | `pool_foreign_segmented.json` | 同上 | 快照缺失时退化为全量 |
 | 队列 → 预检 | `deliver_queue.json` | 同上 + `salary, match` | 空队列直接退出 0 |
 | 预检 → 投递 | `jd_details.json` | `id, btn, years, degree, offline` | 页面读不到记 `unknown`，交人工 |
 | 投递 → 去重 | `deliver_state.json` | `done: {jobid: {...}}` | 首次运行自动初始化 |

@@ -7,8 +7,8 @@
 | 脚本 | 输入 | 输出 | 说明 |
 |---|---|---|---|
 | `yjs_fetch_pool.py` | `--out <目录>` | `pool_foreign_segmented.json`、`pool_size_<seg>.json` | 按企业规模分段抓外企池（`cotype=01,02,06`），HMAC 签名接口 |
-| `analyze_pool.py` | `--dir <目录>` | `pool_analyzed.json`、`pool_hits.json`、`pool_final.json` | 薪资 / 规模 / 方向三维筛选与打分 |
-| `diff_new.py` | `--dir`、`--snapshot` | `new_jobs.json` | 与旧快照对比找新上架岗位 |
+| `analyze_pool.py` | `--dir <目录>` | `pool_analyzed.json`、`pool_hits.json`、`pool_final.json` | 薪资 / 规模 / 方向三维筛选与打分（**旁路**：供人工复核与报表，不是 diff 的上游） |
+| `diff_new.py` | `--dir`、`--snapshot`、可选 `--state` | `new_jobs.json` | 直接读全量池，与旧快照对比找新上架岗位 |
 | `queue_build.py` | `--dir`、`--state` | `deliver_queue.json` | 生成投递队列（std / relaxed 两档，同公司限投） |
 | `queue_build_agent.py` | 同上 | 同上 | 队列构建的 agent 版（保留人工判断接口） |
 | `jd_check.py` | `--queue`、`--out` | `jd_details.json` | 逐岗开详情页，剔除 3 年以上经验 / 博士 / 已下线 / 已申请 |
@@ -19,7 +19,7 @@
 export YJS_SIGN_KEY="..."        # Windows: $env:YJS_SIGN_KEY="..."
 
 python yjs_fetch_pool.py --out pool_2026-11-27
-python analyze_pool.py --dir pool_2026-11-27
+python analyze_pool.py --dir pool_2026-11-27              # 可选：复核 / 报表
 python diff_new.py --dir pool_2026-11-27 --snapshot pool_2026-11-26/pool_foreign_segmented.json
 python queue_build.py --dir pool_2026-11-27 --state deliver_state.json
 python jd_check.py --queue pool_2026-11-27/deliver_queue.json --out pool_2026-11-27/jd_details.json

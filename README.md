@@ -26,9 +26,9 @@
 
 ```mermaid
 flowchart LR
-  A["岗位池抓取<br/>yjs_fetch_pool.py"] --> B["三维筛选<br/>analyze_pool.py"]
-  B --> C["增量 diff<br/>diff_new.py"]
-  C --> D["队列构建<br/>queue_build.py"]
+  A["岗位池抓取<br/>yjs_fetch_pool.py"] --> B["三维筛选<br/>analyze_pool.py<br/>（复核/报表）"]
+  A --> C["增量 diff<br/>diff_new.py"]
+  C --> D["队列构建<br/>queue_build.py<br/>（硬条件+分档）"]
   D --> E["JD 预检<br/>jd_check.py"]
   E --> F["站内投递<br/>deliver_pool.py"]
   F -->|外链 ATS| G["51job 表单<br/>yjs-incomplete-resume-filler"]
@@ -40,9 +40,10 @@ flowchart LR
 四段管道的职责边界：
 
 1. **抓取**：按企业规模分段（500-1000 / 1000-5000 / 5000-10000 / 10000+ 人）拉外企池（`cotype=01,02,06`），分段幂等，支持 `--only` 补抓。
-2. **筛选**：薪资、企业规模、岗位方向三维打分；剔除销售/房产/管家/博士岗；输出达标清单与投递候选。
-3. **diff**：与上一份快照对比找出新上架岗位，并剔除 `deliver_state.json` 里已投过的。
-4. **投递**：逐岗开新标签、等 SPA 渲染、真实坐标点击、校验「投递成功」弹窗或按钮变「已申请」、前后各截一张图。
+2. **筛选**：薪资、企业规模、岗位方向三维打分；剔除销售/房产/管家/博士岗；输出达标清单，供人工复核与报表。
+3. **diff**：直接吃全量池，与上一份快照对比找出新上架岗位，并剔除 `deliver_state.json` 里已投过的。
+4. **队列**：在 diff 结果上再过一遍硬条件与分档（`std` / `relaxed`），同公司限投 2 个，产出最终队列。
+5. **投递**：逐岗开新标签、等 SPA 渲染、真实坐标点击、校验「投递成功」弹窗或按钮变「已申请」、前后各截一张图。
 
 ---
 
