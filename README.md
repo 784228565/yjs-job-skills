@@ -16,9 +16,12 @@
 | [**yjs-job-pipeline**](skills/yjs-job-pipeline/) | 四段管道：抓取 → 分析 → 增量 diff → 投递 | 每天跑一批新岗位；首次建池 | 岗位池 JSON、`new_jobs.json`、投递前后截图、`deliver_state.json` |
 | [**yjs-incomplete-resume-filler**](skills/yjs-incomplete-resume-filler/) | 把「待完善投递」里 51job 分步简历逐条填完并提交 | 岗位跳到 51job 网申（JobsSelect / FillInResume / consumer 三种页面） | 投递成功页截图、`delivery_log.csv` |
 | [**yjs-hr-chat-scraper**](skills/yjs-hr-chat-scraper/) | 导出 HR 聊天记录、查「谁对我感兴趣」、扫待回复会话 | 投递之后的跟进环节 | `chat_*.json/.csv`、`needs_reply_*.json` |
+| [**job-delivery**](skills/job-delivery/) | 按 Excel 队列逐岗投递的通用 Agent（含 CDP 三层降级、Chrome 调试启动手册、站点实战脚本） | 外链 ATS 表单、按队列顺序批量投、需要留痕复盘 | `delivery_log.csv`、`issue_log.md`、投递截图 |
 | [**pipeline/**](pipeline/) | 上面管道前三段的实体脚本（抓取 / 筛选 / 队列 / 预检） | 与 `yjs-job-pipeline` 配套使用 | `pool_*/` 目录 |
 
-> `yjs-job-pipeline` 的 SKILL.md 原本把抓取/分析/diff 三步委托给一个名为 `yjs-foreign-job-scraper` 的技能，但该技能目录在当前机器上已不存在。本仓库把实际在跑的等价脚本收在 `pipeline/`，保证整条链路可以直接跑通（详见「已知限制」）。
+> **CDP 操作在哪？** 四个技能全都靠 CDP 直连本机 Chrome 的 9222 端口，实现在四处：`yjs-incomplete-resume-filler/scripts/cdp.py`（通用驱动，被 16 个脚本 import）、`yjs-job-pipeline/scripts/deliver_pool.py`（自带 `Tab` 类，单文件自足）、`yjs-hr-chat-scraper/scripts/fetch_chat.py`（注入 IM SDK）、`job-delivery/scripts/raw_cdp_chrome.py`（重型客户端，tier-2 降级）。三种实现的取舍、最小代码片段、端口不通的定位流程，见 **[docs/cdp.md](docs/cdp.md)**。
+
+> `yjs-job-pipeline` 的 SKILL.md 原本把抓取/分析/diff 三步委托给一个名为 `yjs-foreign-job-scraper` 的技能，但该技能目录在当前机器上已不存在。本仓库把实际在跑的等价脚本收在 `pipeline/`，并把 SKILL.md 里的路径改为指向 `pipeline/`，保证整条链路可以直接跑通（详见「已知限制」）。
 
 ---
 
@@ -66,14 +69,20 @@ yjs-job-skills/
 │   │   ├── references/
 │   │   │   └── page-patterns.md  # 三类 51job 简历页的踩坑打法
 │   │   └── scripts/              # cdp / 列表 / 分步 / 滑块 / 上传 等 14 个脚本
-│   └── yjs-hr-chat-scraper/
-│       ├── SKILL.md
+│   ├── yjs-hr-chat-scraper/
+│   │   ├── SKILL.md
+│   │   ├── README.md
+│   │   ├── config.example.json
+│   │   ├── assets/
+│   │   │   └── tx_umd.min.js     # 腾讯云 IM Web SDK（离线加载）
+│   │   ├── references/           # 抓包指南 / 协议 / Web 端路径
+│   │   └── scripts/              # extract_creds.py / fetch_chat.py
+│   └── job-delivery/
+│       ├── SKILL.md              # 核心原则 8 条 + 6 步工作流 + 实战补丁 10 条
 │       ├── README.md
-│       ├── config.example.json
-│       ├── assets/
-│       │   └── tx_umd.min.js     # 腾讯云 IM Web SDK（离线加载）
-│       ├── references/           # 抓包指南 / 协议 / Web 端路径
-│       └── scripts/              # extract_creds.py / fetch_chat.py
+│       ├── references/           # 投递细节 / 队列读取 / 邮件确认 / 工具边界
+│       └── scripts/              # check_cdp / start_chrome_debug / raw_cdp_chrome
+│                                 # batch_scan / detect_apply / 站点实战脚本
 ├── pipeline/
 │   ├── README.md
 │   ├── yjs_fetch_pool.py         # 签名接口分段抓取
@@ -84,6 +93,7 @@ yjs-job-skills/
 │   └── jd_check.py               # 投递前 JD 正文预检
 └── docs/
     ├── workflow.md               # 每一步的输入输出契约
+    ├── cdp.md                    # CDP 层总览：四处实现、最小片段、端口排障
     └── security.md               # 凭证、脱敏、账号风险
 ```
 
@@ -113,11 +123,13 @@ cp -r skills/* ~/.workbuddy/skills/
 
 只想要其中一个，就单独拷贝对应目录。`pipeline/` 不必装进技能目录，放在仓库里直接运行即可。
 
+> `job-delivery` 里的路径、简历文件名、登录态正则都是**本机口径**，拷走前必须改（清单见 [skills/job-delivery/README.md](skills/job-delivery/README.md#六使用前必须改的地方)）。
+
 ### 2. 前置条件
 
 | 项 | 要求 |
 |---|---|
-| Chrome | 以 `--remote-debugging-port=9222` 启动，且已登录应届生求职网 |
+| Chrome | 以 `--remote-debugging-port=9222` 启动，且已登录应届生求职网。端口不通先用 `skills/job-delivery/scripts/check_cdp.py` 看退出码，再按 [docs/cdp.md](docs/cdp.md) 处置（Chrome ≥136 需 junction） |
 | Python | 3.10+；投递脚本人肉依赖仅 `websocket-client` |
 | 聊天抓取 | `websocket-client`；提取凭证另需 `mitmproxy`（建议独立 venv，11.x） |
 | 网络 | 脚本启动会剥离代理环境变量并置 `NO_PROXY=*`，避免本机代理干扰 CDP 直连 |
@@ -174,12 +186,14 @@ python skills/yjs-job-pipeline/scripts/deliver_pool.py \
 - **幂等优先**：抓取按段跳过已有文件；投递按 `deliver_state.json` 去重；结果实时落盘，断网/关窗后重跑只补未完成项。
 - **成功要有证据**：以页面弹窗「投递成功」或按钮变「已申请」为唯一成功信号，并保存前后截图；不因收件箱没有回执而重投。
 - **人工兜底**：遇到滑块、登录失效、外链 ATS 一律停下并标记状态，交给人工处理，不硬闯。
+- **只用 CDP，不接管账号**：全部浏览器操作都走本机 Chrome 的 9222 调试端口，复用你已登录的会话，不存账号密码、不装浏览器插件。四种实现与排障见 [docs/cdp.md](docs/cdp.md)。
 
 ---
 
 ## 七、隐私与安全
 
-- 仓库内**不含**任何真实凭证、简历、手机号、聊天记录与投递截图；`.gitignore` 已覆盖 `im_creds.json`、`chat_out/`、`out/`、`pool_*/`、`*.png`。
+- 仓库内**不含**任何真实凭证、简历文件、手机号、邮箱、聊天记录与投递截图；`.gitignore` 已覆盖 `im_creds.json`、`chat_out/`、`out/`、`pool_*/`、`*.png`。
+- **但本仓库仍须保持 Private**：`skills/job-delivery/` 与 `skills/yjs-incomplete-resume-filler/SKILL.md` 含真实姓名、学历/语言等个人信息与 `C:\Users\<user>\...` 本机路径（姓名被用作登录态判定正则，删了会导致检测失效）。公开前必须先把这些替换成占位符。
 - `im_creds.json` 等同账号密码（48 小时有效），只应存在于本机，切勿提交或外传。
 - 导出的聊天记录包含 HR 联系方式，注意保存与二次分享范围。
 - 详细清单与处置方式见 [docs/security.md](docs/security.md)。
@@ -192,7 +206,8 @@ python skills/yjs-job-pipeline/scripts/deliver_pool.py \
 |---|---|
 | **不是全自动** | 滑块、短信、外链 ATS 都需要人工；管道只覆盖 yjs 站内一键投递 |
 | **口径有漂移** | `yjs-job-pipeline/SKILL.md` 写「年薪 ≥24 万」，而实际脚本 `analyze_pool.py` 已放宽到 **≥20 万**（2026-11-04）。以脚本为准，SKILL.md 待同步 |
-| **缺失的抓取技能** | `yjs-foreign-job-scraper` 已不在本机技能目录，`pipeline/` 是等价脚本的归拢，不是原技能的完整复刻 |
+| **缺失的抓取技能** | `yjs-foreign-job-scraper` 已不在本机技能目录，`pipeline/` 是等价脚本的归拢，不是原技能的完整复刻；`yjs-job-pipeline/SKILL.md` 里的路径已改为指向 `pipeline/` |
+| **job-delivery 是本机口径** | 内含 `Desktop\工作agent` 绝对路径、简历文件名与姓名正则，搬家需逐项替换；其 `RawCDPChrome` 另需 `aiohttp` + `websockets`（`check_cdp.py` 仍为纯标准库） |
 | **平台改版即失效** | 全部依赖页面结构（`.delivery-btn`、Element UI 组件等），平台一改就要修选择器 |
 | **WAF 与软风控** | 连续快速开页会触发滑块；密集自动化后接口可能返回空 200。处置是冷却 30–60 分钟，不是加大重试 |
 | **账号风险** | 自动化操作可能触发平台风控，后果自负；建议控制频率、保留人工确认 |
@@ -202,7 +217,10 @@ python skills/yjs-job-pipeline/scripts/deliver_pool.py \
 ## 九、常见问题
 
 **Q：9222 连不上？**
-先 `curl http://127.0.0.1:9222/json/list`。不通就让用户手动用调试参数重启 Chrome——脚本不会 kill 你的浏览器。
+先 `curl http://127.0.0.1:9222/json/list`。不通就跑 `python skills/job-delivery/scripts/check_cdp.py` 看退出码（0 正常 / 1 端口不通 / 2 Chrome 没开 / 3 端口被占），再按 [docs/cdp.md](docs/cdp.md) 处置。脚本不会 kill 你的浏览器。
+
+**Q：这套技能的 CDP 代码在哪个文件？**
+四处：`yjs-incomplete-resume-filler/scripts/cdp.py`（通用驱动，16 个脚本 import 它）、`yjs-job-pipeline/scripts/deliver_pool.py`（自带 `Tab`）、`yjs-hr-chat-scraper/scripts/fetch_chat.py`（注入 IM SDK）、`job-delivery/scripts/raw_cdp_chrome.py`（重型客户端）。对照表与最小片段见 [docs/cdp.md](docs/cdp.md)。
 
 **Q：投递一直 `NeedsUser`？**
 大概率是滑块。脚本会等 `--waf-wait` 秒后重试一次，仍不过就跳过该岗位；人工在 Chrome 里滑一次，会话 Cookie 恢复后重跑即可。
@@ -217,7 +235,8 @@ yjs 站内一键投递没有邮件回执，以「已申请」按钮状态 + 截�
 
 ## 十、变更记录
 
-- **2026-11-27**：首次整理发布。三个技能脱敏（移除 `im_creds.json`、运行截图、个人绝对路径、签名密钥），补齐 `pipeline/` 脚本，新增各技能中文 README。
+- **2026-11-27（首次发布）**：三个 yjs 技能脱敏（移除 `im_creds.json`、运行截图、个人绝对路径、签名密钥），补齐 `pipeline/` 脚本，新增各技能中文 README。
+- **2026-11-27（补充 CDP 层）**：新增第 4 个技能 `job-delivery`（队列投递 + CDP 三层降级 + Chrome 调试启动手册）；新增 [docs/cdp.md](docs/cdp.md) 汇总四处 CDP 实现；修正 `yjs-job-pipeline/SKILL.md` 中指向已不存在的 `yjs-foreign-job-scraper` 的三处路径，补上队列构建与 JD 预检两步命令。
 
 ## 免责声明
 

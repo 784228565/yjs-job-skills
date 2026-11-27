@@ -21,6 +21,7 @@
 | 密钥外置 | `pipeline/yjs_fetch_pool.py` 硬编码 HMAC 密钥 | 改为读 `YJS_SIGN_KEY` 环境变量，未设置时直接退出 |
 | 路径泛化 | `C:\Users\<用户名>\...` 出现在 3 处文档与 1 处脚本提示 | 改为 `%USERPROFILE%` 或 `<简历目录>` |
 | 关键词脱敏 | `fetch_chat.py` 示例用了真实公司名 | 改为「某公司」 |
+| 手机号/邮箱外置 | `job-delivery/scripts/valeo_step3_gmail.py` 的求职信正文硬编码真实手机号与 Gmail 地址 | 改为 `rf"""` 模板 + `MY_PHONE` / `MY_EMAIL` 环境变量，未设置时显示 `<手机号>` / `<邮箱>` |
 | 运行产物 | `__pycache__`、`pool_*`、`deliver_state.json` | 已排除 |
 
 脱敏后仍保留的功能：抓取、筛选、diff、队列、预检、投递、简历填写、聊天导出。**没有为了脱敏删掉任何执行逻辑**，只把「本机专属的值」换成了需要你填的占位符或环境变量。
@@ -29,8 +30,16 @@
 
 `skills/yjs-incomplete-resume-filler/SKILL.md` 的「用户简历口径」一节保留了真实教育背景、GPA、语言成绩、意向城市与实践单位。这是技能自动填表时的事实来源，删掉会影响可用性。
 
+`skills/job-delivery/` 另有三处本机口径（2026-11-27 补充纳入，**未脱敏，按原样保留**）：
+
+| 位置 | 内容 | 为什么没删 |
+|---|---|---|
+| `scripts/batch_scan.py`、`detect_apply*.py` | 登录态判定正则里写死真实姓名（`Junting Wu` / `吴俊庭`） | 删了正则永远匹配不到「已登录」，整个登录检测失效 |
+| `scripts/config.py` | `C:\Users\<user>\Desktop\工作agent` 与简历文件名 | 队列/简历/日志的实际落盘位置 |
+| `SKILL.md`、`references/*.md` | 同一批绝对路径、状态记录目录 | 是本机跑通的现场记录 |
+
 - 仓库设为 **Private**：可以保留。
-- 仓库设为 **Public**：建议把该节替换为占位符（学校 `__`、GPA `__`、语言成绩 `__`），或迁到本地 `references/profile.local.md` 并在 `.gitignore` 中排除。
+- 仓库设为 **Public**：必须先做三件事 —— ① 学历/GPA/语言成绩替换为 `__` 占位符；② 姓名正则改为 `os.environ.get("MY_NAME_RE", "__")` 之类可注入形式；③ 绝对路径统一改 `%USERPROFILE%\...` 或环境变量。三者任一没做都会**同时**泄露个人信息并让脚本失效。
 
 ## 四、发布前自检
 

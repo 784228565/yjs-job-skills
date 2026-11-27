@@ -1,0 +1,10 @@
+# job-delivery runtime dependencies
+# RawCDPChrome (tier-2 CDP fallback)
+websockets>=12.0
+aiohttp>=3.9
+# Queue file reading
+openpyxl>=3.1
+# Gmail MCP confirmation check
+requests>=2.31
+# Tier-3 LLM form filling (optional; tier-3 disabled if absent)
+# browser-use>=0.1.0

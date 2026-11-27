@@ -1,6 +1,6 @@
 ---
 name: yjs-job-pipeline
-description: 应届生求职网（yingjiesheng.com）外企岗位全链路管道：签名接口分段抓取岗位池、薪资/规模/方向三维筛选、快照 diff 找新上岗位、CDP 复用 Chrome 登录态一键投递（含 WAF 限速规避）。当用户要求「抓取/更新 yjs 岗位池、找新上岗位、按薪资规模筛选外企岗、批量投递 yjs 岗位、跑每日投递管道」时使用。抓取/分析/diff 三步委托 yjs-foreign-job-scraper 技能完成，本技能负责整体编排与最后一步投递。
+description: 应届生求职网（yingjiesheng.com）外企岗位全链路管道：签名接口分段抓取岗位池、薪资/规模/方向三维筛选、快照 diff 找新上岗位、CDP 复用 Chrome 登录态一键投递（含 WAF 限速规避）。当用户要求「抓取/更新 yjs 岗位池、找新上岗位、按薪资规模筛选外企岗、批量投递 yjs 岗位、跑每日投递管道」时使用。抓取/分析/diff 三步的实体脚本在同仓库 pipeline/ 目录（历史上委托给已不存在的 yjs-foreign-job-scraper 技能），本技能负责整体编排与最后一步投递。
 ---
 
 # yjs-job-pipeline：抓取 → 分析 → diff → 投递 全链路
@@ -28,10 +28,10 @@ description: 应届生求职网（yingjiesheng.com）外企岗位全链路管道
 | 旧快照 `--snapshot` | diff 阶段 | 上一次的全量池 JSON 文件路径 |
 | 投递队列 JSON | 投递阶段 | `[{id, co, job, url, delivered?}]`；`delivered:true` 跳过；建议投递前剔除 `url` 非 yingjiesheng.com 的外链岗 |
 | deliver_state.json | 投递阶段 | 已投记录唯一去重依据；**首次运行不存在时脚本自动初始化** |
-| Chrome 调试模式 | 投递阶段 | `curl http://127.0.0.1:9222/json/list` 必须通；不通请用户用 `job-delivery` 技能的话术重启 Chrome，**不得自行 kill 用户 Chrome** |
+| Chrome 调试模式 | 投递阶段 | `curl http://127.0.0.1:9222/json/list` 必须通；不通请用户用 `skills/job-delivery`（本仓库自带）的「Chrome调试模式启动」话术重启 Chrome，**不得自行 kill 用户 Chrome** |
 
-抓取接口、签名、cosize 分段等参数定义以 **yjs-foreign-job-scraper 技能为唯一事实源**，
-本技能不重复抄录（避免两处漂移）。投递只需知道：单条岗位含
+抓取接口、签名、cosize 分段等参数定义以仓库内 **`pipeline/` 目录为唯一事实源**
+（读 `pipeline/README.md` 与 `pipeline/yjs_fetch_pool.py`），本技能不重复抄录（避免两处漂移；历史上这三步曾委托给一个名为 `yjs-foreign-job-scraper` 的技能，该技能已不存在，等价脚本已收进 `pipeline/`）。投递只需知道：单条岗位含
 `id, jobname, coname, cosize, salary, jobarea, degree, jobTags[], url`，其中 `url`
 是带 property 参数的详情直链，可直接作为投递输入。
 
@@ -40,22 +40,31 @@ description: 应届生求职网（yingjiesheng.com）外企岗位全链路管道
 ```bash
 # python 指 venv default（已装 websocket-client）：
 #   ~/.workbuddy/binaries/python/envs/default/bin/python
+# 签名密钥不随仓库分发，先 export YJS_SIGN_KEY=...（见仓库 README「签名密钥」一节）
+# PIPELINE 指向本仓库的 pipeline/ 目录（在此目录下执行时可写 PIPELINE=./pipeline）
+PIPELINE=<仓库根>/pipeline
 
-# 1. 抓取（委托 yjs-foreign-job-scraper 技能脚本）
-python ~/.workbuddy/skills/yjs-foreign-job-scraper/scripts/fetch_pool.py --out pool_<日期>
+# 1. 抓取
+python "$PIPELINE/yjs_fetch_pool.py" --out pool_<日期>
 #    段返回 0 / 连续 405 = 限流：冷却 90-180s 后用 --only <段号> 单独补抓
 
-# 2. 分析（薪资/规模/方向三维筛选）
-python ~/.workbuddy/skills/yjs-foreign-job-scraper/scripts/analyze_pool.py --dir pool_<日期>
+# 2. 分析（薪资/规模/方向三维筛选；旁路，不参与 diff）
+python "$PIPELINE/analyze_pool.py" --dir pool_<日期>
 #    产出 pool_analyzed / pool_hits / pool_final.json
 
-# 3. 增量 diff
-python ~/.workbuddy/skills/yjs-foreign-job-scraper/scripts/diff_new.py \
-    --dir pool_<日期> --snapshot pool_<旧日期>/pool_foreign_segmented.json
+# 3. 增量 diff（直读全量池，不依赖第 2 步）
+python "$PIPELINE/diff_new.py" --dir pool_<日期> --snapshot pool_<旧日期>/pool_foreign_segmented.json
+
+# 3.5 队列构建（硬条件过滤 + std/relaxed 分档，产出 <dir>/deliver_queue.json）
+python "$PIPELINE/queue_build.py" --dir pool_<日期> --state deliver_state.json
+
+# 3.6 JD 预检（开页读 JD，剔掉挂羊头岗位；可选但建议）
+python "$PIPELINE/jd_check.py" --queue pool_<日期>/deliver_queue.json \
+    --out pool_<日期>/deliver_queue_checked.json --cooldown 6
 
 # 4. 投递（本技能脚本，原生 CDP + websocket-client）
 python ~/.workbuddy/skills/yjs-job-pipeline/scripts/deliver_pool.py \
-    --queue pool_<日期>/new_jobs.json --state deliver_state.json \
+    --queue pool_<日期>/deliver_queue.json --state deliver_state.json \
     --cooldown 30 --passes 2 --shots logs/deliver_<日期>
 #    --results 默认 <队列所在目录>/delivery_results.json
 ```
@@ -86,7 +95,7 @@ python ~/.workbuddy/skills/yjs-job-pipeline/scripts/deliver_pool.py \
 
 ## 投递前预检（30 秒）
 
-1. `curl http://127.0.0.1:9222/json/list` 通；不通按 job-delivery 话术请用户重启
+1. `curl http://127.0.0.1:9222/json/list` 通；不通按 `skills/job-delivery` 的话术请用户重启
    调试 Chrome，不得自行 kill。
 2. 队列 JSON 存在、含 `id/co/job/url`，外链岗已剔除。
 3. python 环境有 websocket-client（venv default 已有）。
@@ -135,9 +144,10 @@ python ~/.workbuddy/skills/yjs-job-pipeline/scripts/deliver_pool.py \
   已命中则 `--waf-wait` 后自动重开重试一次；仍不过 → 标 `NeedsUser(captcha)`
   跳过该岗位继续。**不破解、不硬闯滑块**；需要人工滑一次后会话 Cookie 即恢复。
 - **环境依赖**：投递脚本只用标准库 + websocket-client（venv default 已有）。
-  job-delivery 技能的 RawCDPChrome 依赖 aiohttp/websockets，本机 venv 未装，勿用。
-- **Chrome 红线**：不得 kill/重启用户 Chrome；9222 不通时按 job-delivery 技能话术
-  请用户手动重启调试 Chrome。
+  同仓库 `skills/job-delivery/` 的 `RawCDPChrome`（tier-2 降级用）另需 `aiohttp`/`websockets`，
+  本机 venv 未装，**本技能不要调用它**；但它自带的 `check_cdp.py` 是纯标准库，可直接用来诊断 9222。
+- **Chrome 红线**：不得 kill/重启用户 Chrome；9222 不通时按 `skills/job-delivery/SKILL.md`
+  「Chrome调试模式启动」一节的话术（含 Chrome ≥136 的 junction 解法）请用户手动重启。
 - **外链岗位**：详情页 `url` 离开 yingjiesheng.com 即停止自动化并记录
   `Redirect`，不猜测外链表单内容。
 - **无确认邮件**：yjs 一键投递无邮件回执，以站内「已申请」状态 + 截图为最终依据，
