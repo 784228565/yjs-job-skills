@@ -1,0 +1,31 @@
+# 凭证与个人数据：绝不入库
+im_creds.json
+**/im_creds.json
+chat_out/
+out/
+logs/
+*.flows
+
+# 运行产物
+pool_*/
+deliver_state.json
+delivery_results.json
+delivery_log.csv
+delivery_status.csv
+*.xlsx
+
+# 截图可能包含简历、手机号、聊天内容
+*.png
+*.jpg
+*.jpeg
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# 系统
+.DS_Store
+Thumbs.db
+desktop.ini

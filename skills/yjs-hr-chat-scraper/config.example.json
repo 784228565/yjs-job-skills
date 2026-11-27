@@ -1,0 +1,12 @@
+{
+  "cdp_port": 9222,
+  "creds": "im_creds.json",
+  "outdir": "chat_out",
+  "defaults": {
+    "max_per_conv": 50,
+    "max_convs": 0,
+    "include_system": false,
+    "hr_only": false,
+    "timeout": 120
+  }
+}
